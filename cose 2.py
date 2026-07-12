@@ -24,7 +24,7 @@ QP0 = np.array([0.0073, 0.0062, 0.0624])
 # Combine all variables into one initial vector
 y0 = np.concatenate([P0, S0, Q0, QP0])
 
-# Small normalization correction because the data sum is 1.0001 due to rounding
+# Small normalization correction because the data sum is not exactly 1 due to rounding
 y0 = y0 / np.sum(y0)
 
 # After normalization, update initial values used inside the model
@@ -34,7 +34,7 @@ Q0 = y0[6:9]
 QP0 = y0[9:12]
 
 # ============================================================
-# New empirical data from the chart
+# Empirical data from the chart
 # ============================================================
 
 G = np.array([0.045, 0.0636, 0.0426])
@@ -57,29 +57,13 @@ print("gamma =", gamma)
 print("alpha =", alpha)
 
 # ============================================================
-# Calculate sigma
+# Sigma
 # ============================================================
 
-sigma = np.zeros(3)
-
-sigma[0] = ((mu[0] + delta1) * QP0[0]) / (gamma[0] * S0[0])
-
-sigma[1] = (
-    ((mu[1] + delta2) * QP0[1] - delta1 * QP0[0])
-    / (gamma[1] * S0[1])
-)
-
-sigma[2] = (
-    (mu[2] * QP0[2] - delta2 * QP0[1])
-    / (gamma[2] * S0[2])
-)
-
-# Sigma estimated only from CDC report:
+# Sigma estimated from CDC report:
 # CDC "Recent successful cessation" = quit smoking for at least 6 months.
-
 sigma = np.array([0.10, 0.153, 0.079])
 
-print("sigma =", sigma)
 print("sigma =", sigma)
 
 # ============================================================
@@ -87,24 +71,40 @@ print("sigma =", sigma)
 # ============================================================
 
 C = np.array([
-    [0.6,  0.3, 0.1],
-    [0.25, 0.5, 0.25],
-    [0.1,  0.3, 0.6]
+    [0.6,  0.3,  0.1],
+    [0.25, 0.5,  0.25],
+    [0.1,  0.3,  0.6]
 ])
 
 # ============================================================
 # Delta values for smoking initiation
-# If these values are changed, only beta and B change
 # ============================================================
 
 Delta = np.array([0.1015, 0.038, 0.005])
 
-# Calculate beta_i
-D = C @ S0
-beta = Delta / D
+# ============================================================
+# Calculate beta_i and influence matrix B
+#
+# New formula:
+# beta_ij = beta_i * C_ij * (1 / N_i)
+#
+# Therefore:
+# Delta_i = (beta_i / N_i) * sum_j C_ij S_j
+#
+# Let:
+# D_i = sum_j C_ij S_j
+#
+# Then:
+# beta_i = Delta_i * N_i / D_i
+# ============================================================
 
-# Influence matrix B
-B = beta[:, None] * C
+D = C @ S0
+
+# New beta_i calculation
+beta = Delta * N / D
+
+# New influence matrix B
+B = beta[:, None] * C / N[:, None]
 
 print("D =", D)
 print("beta =", beta)
@@ -296,6 +296,23 @@ QP = Y[9:12, :]
 total = np.sum(Y, axis=0)
 
 # ============================================================
+# Calculate percentages inside each age group
+#
+# Group total:
+# N_i(t) = P_i(t) + S_i(t) + Q_i(t) + QP_i(t)
+#
+# Percentage of each variable inside its group:
+# X_i%(t) = X_i(t) / N_i(t) * 100
+# ============================================================
+
+group_total = P + S + Q + QP
+
+P_percent = P / group_total * 100
+S_percent = S / group_total * 100
+Q_percent = Q / group_total * 100
+QP_percent = QP / group_total * 100
+
+# ============================================================
 # Print normalization check and final values
 # ============================================================
 
@@ -305,20 +322,33 @@ print("Final total   =", total[-1])
 print("Min total     =", np.min(total))
 print("Max total     =", np.max(total))
 
-print("\nFinal values:")
+print("\nFinal values as proportion of total population:")
 print("Final P  =", P[:, -1])
 print("Final S  =", S[:, -1])
 print("Final Q  =", Q[:, -1])
 print("Final QP =", QP[:, -1])
 
-# ============================================================
-# Plots - 3 separate graphs for each group
-# and one combined figure containing the same three graphs
-# ============================================================
+print("\nFinal percentages inside each age group:")
 
-# ------------------------------------------------------------
-# Graph 4: Combined figure - the same three graphs together
-# ------------------------------------------------------------
+groups = ["Youth", "Young adults", "Adults"]
+
+for i, group in enumerate(groups):
+    print("\n" + group)
+    print("P%  =", P_percent[i, -1])
+    print("S%  =", S_percent[i, -1])
+    print("Q%  =", Q_percent[i, -1])
+    print("QP% =", QP_percent[i, -1])
+    print("Total =", (
+        P_percent[i, -1]
+        + S_percent[i, -1]
+        + Q_percent[i, -1]
+        + QP_percent[i, -1]
+    ))
+
+# ============================================================
+# Graph 1 - Model dynamics by age group
+# Values are proportions out of the total population
+# ============================================================
 
 fig, axes = plt.subplots(3, 1, figsize=(10, 14), sharex=True)
 
@@ -328,7 +358,7 @@ axes[0].plot(sol.t, S[0], label="S1 - Active smokers")
 axes[0].plot(sol.t, Q[0], label="Q1 - Temporary quitters")
 axes[0].plot(sol.t, QP[0], label="QP1 - Permanent quitters")
 axes[0].set_title("Group 1 - Youth")
-axes[0].set_ylabel("Proportion")
+axes[0].set_ylabel("Proportion of total population")
 axes[0].legend()
 axes[0].grid(True)
 
@@ -338,7 +368,7 @@ axes[1].plot(sol.t, S[1], label="S2 - Active smokers")
 axes[1].plot(sol.t, Q[1], label="Q2 - Temporary quitters")
 axes[1].plot(sol.t, QP[1], label="QP2 - Permanent quitters")
 axes[1].set_title("Group 2 - Young adults")
-axes[1].set_ylabel("Proportion")
+axes[1].set_ylabel("Proportion of total population")
 axes[1].legend()
 axes[1].grid(True)
 
@@ -349,10 +379,58 @@ axes[2].plot(sol.t, Q[2], label="Q3 - Temporary quitters")
 axes[2].plot(sol.t, QP[2], label="QP3 - Permanent quitters")
 axes[2].set_title("Group 3 - Adults")
 axes[2].set_xlabel("Time")
-axes[2].set_ylabel("Proportion")
+axes[2].set_ylabel("Proportion of total population")
 axes[2].legend()
 axes[2].grid(True)
 
-plt.suptitle("Smoking Model Dynamics by Age Group", fontsize=16)
+plt.suptitle(
+    "Smoking Model Dynamics by Age Group - Proportion of Total Population",
+    fontsize=16
+)
+plt.tight_layout()
+plt.show()
+
+# ============================================================
+# Graph 2 - Percentage of each variable inside its own age group
+# Values are percentages within the relevant group
+# ============================================================
+
+fig, axes = plt.subplots(3, 1, figsize=(10, 14), sharex=True)
+
+# Group 1
+axes[0].plot(sol.t, P_percent[0], label="P1% - Potential smokers")
+axes[0].plot(sol.t, S_percent[0], label="S1% - Active smokers")
+axes[0].plot(sol.t, Q_percent[0], label="Q1% - Temporary quitters")
+axes[0].plot(sol.t, QP_percent[0], label="QP1% - Permanent quitters")
+axes[0].set_title("Group 1 - Youth")
+axes[0].set_ylabel("Percentage within group (%)")
+axes[0].legend()
+axes[0].grid(True)
+
+# Group 2
+axes[1].plot(sol.t, P_percent[1], label="P2% - Potential smokers")
+axes[1].plot(sol.t, S_percent[1], label="S2% - Active smokers")
+axes[1].plot(sol.t, Q_percent[1], label="Q2% - Temporary quitters")
+axes[1].plot(sol.t, QP_percent[1], label="QP2% - Permanent quitters")
+axes[1].set_title("Group 2 - Young adults")
+axes[1].set_ylabel("Percentage within group (%)")
+axes[1].legend()
+axes[1].grid(True)
+
+# Group 3
+axes[2].plot(sol.t, P_percent[2], label="P3% - Potential smokers")
+axes[2].plot(sol.t, S_percent[2], label="S3% - Active smokers")
+axes[2].plot(sol.t, Q_percent[2], label="Q3% - Temporary quitters")
+axes[2].plot(sol.t, QP_percent[2], label="QP3% - Permanent quitters")
+axes[2].set_title("Group 3 - Adults")
+axes[2].set_xlabel("Time")
+axes[2].set_ylabel("Percentage within group (%)")
+axes[2].legend()
+axes[2].grid(True)
+
+plt.suptitle(
+    "Smoking Model Dynamics by Age Group - Percentage Within Each Group",
+    fontsize=16
+)
 plt.tight_layout()
 plt.show()
